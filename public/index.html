@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Lobby Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map { height: 400px; }
+    </style>
+</head>
+<body>
+    <h1>Lobby Tracker</h1>
+    <input id="lobbyId" placeholder="Lobby ID">
+    <input id="userName" placeholder="Your Name">
+    <label><input type="checkbox" id="isHost"> Host?</label>
+    <button onclick="joinLobby()">Join</button>
+    <div id="map"></div>
+    <label id="intervalControl" style="display:none;">
+        Update interval (ms):
+        <input id="interval" type="number" value="5000">
+        <button onclick="setIntervalFromHost()">Set</button>
+    </label>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
