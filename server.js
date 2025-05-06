@@ -19,34 +19,57 @@ io.on('connection', (socket) => {
         socket.isHost = isHost;
         socket.updateInterval = 5000;
 
-        if (!lobbies[lobbyId]) lobbies[lobbyId] = {};
-        lobbies[lobbyId][socket.id] = { name: userName, location: null, interval: 5000 };
+        // Always use the correct structure
+        if (!lobbies[lobbyId]) {
+            lobbies[lobbyId] = { users: {}, boxes: [] };
+        }
 
-        io.to(lobbyId).emit('userList', lobbies[lobbyId]);
+        lobbies[lobbyId].users[socket.id] = { name: userName, location: null, interval: 5000, isHost };
+
+        // Send all boxes to the new user
+        socket.emit('boxList', lobbies[lobbyId].boxes);
+
+        io.to(lobbyId).emit('userList', lobbies[lobbyId].users);
     });
 
     socket.on('locationUpdate', (location) => {
         const lobby = lobbies[socket.lobbyId];
-        if (lobby && lobby[socket.id]) {
-            lobby[socket.id].location = location;
-            io.to(socket.lobbyId).emit('userList', lobby);
+        if (lobby && lobby.users[socket.id]) {
+            lobby.users[socket.id].location = location;
+            io.to(socket.lobbyId).emit('userList', lobby.users);
         }
     });
 
     socket.on('setUpdateInterval', (interval) => {
         if (socket.isHost) {
-            for (const id in lobbies[socket.lobbyId]) {
-                lobbies[socket.lobbyId][id].interval = interval;
+            for (const id in lobbies[socket.lobbyId].users) {
+                lobbies[socket.lobbyId].users[id].interval = interval;
             }
             io.to(socket.lobbyId).emit('updateInterval', interval);
         }
     });
 
+    socket.on('drawBox', (boxBounds) => {
+        if (socket.isHost) {
+            // Store and broadcast the box
+            lobbies[socket.lobbyId].boxes.push(boxBounds);
+            io.to(socket.lobbyId).emit('newBox', boxBounds);
+        }
+    });
+
+    socket.on('draw-box', (box) => {
+        io.emit('draw-box', box);
+    });
+
+    socket.on('draw-rectangle', (bounds) => {
+        io.emit('draw-rectangle', bounds);
+    });
+
     socket.on('disconnect', () => {
         const lobby = lobbies[socket.lobbyId];
         if (lobby) {
-            delete lobby[socket.id];
-            io.to(socket.lobbyId).emit('userList', lobby);
+            delete lobby.users[socket.id];
+            io.to(socket.lobbyId).emit('userList', lobby.users);
         }
     });
 });

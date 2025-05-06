@@ -5,7 +5,22 @@
     <title>Lobby Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        #map { height: 400px; }
+        #map { height: 500px; }
+        .leaflet-bar {
+            box-shadow: none;
+        }
+        .custom-draw-button {
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 5px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 18px;
+            line-height: 20px;
+        }
+        .custom-draw-button:hover {
+            background-color: #f4f4f4;
+        }
     </style>
 </head>
 <body>
@@ -15,11 +30,20 @@
     <label><input type="checkbox" id="isHost"> Host?</label>
     <button onclick="joinLobby()">Join</button>
     <div id="map"></div>
+    
     <label id="intervalControl" style="display:none;">
         Update interval (ms):
         <input id="interval" type="number" value="5000">
         <button onclick="setIntervalFromHost()">Set</button>
     </label>
+
+    <div id="userListContainer">
+        <h3>Users in Lobby:</h3>
+        <ul id="userList"></ul>
+    </div>
+
+    <canvas id="canvas" width="800" height="600" style="border:1px solid #000"></canvas>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="script.js"></script>
