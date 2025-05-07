@@ -226,23 +226,19 @@ function hideWarning() {
 }
 
 function updateUserList(users) {
-    // Ensure users is an array
-    if (!Array.isArray(users)) {
-        users = Object.values(users); // Convert object to array if necessary
-    }
+    const userList = document.getElementById('userList');
+    userList.innerHTML = '';
 
-    const ul = document.getElementById('userList');
-    ul.innerHTML = '';
-    users.forEach(user => {
+    Object.entries(users).forEach(([id, user]) => {
         if (!user.location) {
-            console.warn(`Skipping user with null location: ${user.name}`);
-            return; // Skip users with null locations
+            console.warn(`Skipping user with null location: ${id}`);
+            return; // Skip users without a valid location
         }
 
         const li = document.createElement('li');
         const inside = isInsideGeofence(user);
         li.textContent = user.name + (inside ? '' : ' ⚠️ OUTSIDE');
-        ul.appendChild(li);
+        userList.appendChild(li);
 
         // Show warning only if there are boxes on the map and the user is outside
         if (boxList.length > 0 && !inside) {

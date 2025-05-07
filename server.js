@@ -35,7 +35,12 @@ io.on('connection', (socket) => {
             io.to(lobbyId).emit('boxList', []);
         }
 
-        lobbies[lobbyId].users[socket.id] = { name: userName, location: null, interval: 5000, isHost };
+        lobbies[lobbyId].users[socket.id] = { 
+            name: userName, 
+            location: { lat: 0, lng: 0 }, // Default location
+            interval: 5000, 
+            isHost 
+        };
 
         const boxes = lobbies[lobbyId].boxes.slice(-5);
         socket.emit('boxList', boxes);
@@ -129,6 +134,10 @@ app.post("/location", (req, res) => {
     if (prevState !== newState) {
         console.log(`${userId} ${prevState || "unknown"} → ${newState}`);
         // Add custom logic here for entry/exit events
+    }
+
+    if (newState === "outside") {
+        console.warn(`Warning: User ${userId} is outside the boundaries!`); // Log warning each time user is outside
     }
 
     userStates[userId] = newState; // Update the user's state
