@@ -372,3 +372,22 @@ if (clearBoxButton) clearBoxButton.addEventListener('click', clearBox);
 // - Only the host can draw a box.
 // - All drawing is handled via Leaflet, not canvas.
 // - Code is simplified for clarity and maintainability.
+
+function requestLocationPermission() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                console.log("Location permission granted:", position);
+            },
+            (error) => {
+                console.error("Error requesting location permission:", error.message);
+                alert("Please enable location permissions for this app to work correctly.");
+            }
+        );
+    } else {
+        alert("Geolocation is not supported by your browser.");
+    }
+}
+
+// Call this function when the page loads or when the user joins the lobby
+document.addEventListener('DOMContentLoaded', requestLocationPermission);
