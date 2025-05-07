@@ -170,6 +170,14 @@ function startLocationUpdates() {
                     lng: position.coords.longitude
                 };
                 socket.emit('locationUpdate', coords);
+
+                // Check if user is outside the map bounds
+                const warningDiv = document.getElementById('warning');
+                if (!isInMapBounds(coords.lat, coords.lng)) {
+                    if (warningDiv) warningDiv.style.display = 'block';
+                } else {
+                    if (warningDiv) warningDiv.style.display = 'none';
+                }
             });
         }
     }, updateInterval);
@@ -182,31 +190,47 @@ function setIntervalFromHost() {
 }
 
 // --- Geofence Logic ---
-function isInsideGeofence(latlng) {
-    if (!drawnBox || !drawnBox.getBounds || !drawnBox.getBounds().isValid()) {
-        console.warn("Geofence is not defined or has invalid bounds.");
-        return true; // Default to true if no valid geofence exists
+function isInsideGeofence(user) {
+    if (!user || typeof user.lat !== 'number' || typeof user.lng !== 'number') {
+        console.warn("Skipping user with invalid coordinates:", user);
+        return false; // Treat invalid users as outside the geofence
     }
-    return drawnBox.getBounds().contains(latlng);
+    return isInMapBounds(user.lat, user.lng);
 }
 
+// --- User List Update ---
 function updateUserList(users) {
     // Ensure users is an array
     if (!Array.isArray(users)) {
         users = Object.values(users); // Convert object to array if necessary
     }
 
+    // Filter out invalid users
+    const validUsers = users.filter(user => typeof user.lat === 'number' && typeof user.lng === 'number');
+
     const ul = document.getElementById('userList');
     ul.innerHTML = '';
-    users.forEach(user => {
+    validUsers.forEach(user => {
         const li = document.createElement('li');
-        const inside = isInsideGeofence(L.latLng(user.lat, user.lng));
+        const inside = isInsideGeofence(user);
         li.textContent = user.name + (inside ? '' : ' ⚠️ OUTSIDE');
         ul.appendChild(li);
         if (!inside) {
             console.warn(`${user.name} is outside the geofence!`);
         }
     });
+}
+
+// --- Map Bounds Check ---
+function isInMapBounds(lat, lng) {
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+        console.warn("Invalid lat/lng:", lat, lng);
+        return false; // Or choose to return true to avoid false warnings
+    }
+
+    if (!map) return false; // Ensure map is initialized
+    const bounds = map.getBounds();
+    return bounds.contains([lat, lng]);
 }
 
 // --- Socket Events ---
