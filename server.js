@@ -10,6 +10,7 @@ const io = socketIO(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 const lobbies = {};
+const userStates = {}; // In-memory store to track user states (inside or outside)
 
 io.on('connection', (socket) => {
     console.log(`New connection: ${socket.id}`); // Debug log for new connection
@@ -93,6 +94,46 @@ io.on('connection', (socket) => {
             console.log(`Removed user ${socket.userName} from lobby ${socket.lobbyId}`); // Debug log for user removal
         }
     });
+});
+
+// Haversine formula to check if a point is inside a circular geofence
+function checkIfInside(lat, lng, centerLat, centerLng, radius) {
+    const toRadians = (degrees) => degrees * (Math.PI / 180);
+    const earthRadius = 6371000; // Earth's radius in meters
+
+    const dLat = toRadians(lat - centerLat);
+    const dLng = toRadians(lng - centerLng);
+
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(toRadians(centerLat)) * Math.cos(toRadians(lat)) *
+              Math.sin(dLng / 2) ** 2;
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = earthRadius * c;
+
+    return distance <= radius; // Returns true if within the radius
+}
+
+// Modify the /location route to handle geofence entry/exit
+app.post("/location", (req, res) => {
+    const { userId, lat, lng } = req.body;
+
+    const centerLat = YOUR_CENTER_LAT; // Replace with your geofence center latitude
+    const centerLng = YOUR_CENTER_LNG; // Replace with your geofence center longitude
+    const radius = YOUR_RADIUS_METERS; // Replace with your geofence radius in meters
+
+    const isInside = checkIfInside(lat, lng, centerLat, centerLng, radius);
+    const newState = isInside ? "inside" : "outside";
+    const prevState = userStates[userId];
+
+    if (prevState !== newState) {
+        console.log(`${userId} ${prevState || "unknown"} → ${newState}`);
+        // Add custom logic here for entry/exit events
+    }
+
+    userStates[userId] = newState; // Update the user's state
+
+    res.send({ status: newState });
 });
 
 server.listen(3000, () => {

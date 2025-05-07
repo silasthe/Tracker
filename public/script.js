@@ -159,8 +159,6 @@ function clearBox() {
 }
 
 // --- Location Updates ---
-let userWasOutside = false; // Track if the user was previously outside the geofence
-
 function startLocationUpdates() {
     // Send location to server at set interval
     if (locationUpdateIntervalId) clearInterval(locationUpdateIntervalId);
@@ -174,18 +172,10 @@ function startLocationUpdates() {
                 socket.emit('locationUpdate', coords);
 
                 // Check if user is outside the geofence boundaries
-                const isOutside = boxList.length > 0 && !isInsideGeofence({ location: coords });
-
-                if (isOutside) {
-                    if (!userWasOutside) {
-                        showWarning("⚠️ You are outside the allowed area!");
-                        userWasOutside = true; // Mark user as outside
-                    }
+                if (boxList.length > 0 && !isInsideGeofence({ location: coords })) {
+                    showWarning("⚠️ You are outside the allowed area!");
                 } else {
-                    if (userWasOutside) {
-                        hideWarning();
-                        userWasOutside = false; // Reset the outside status
-                    }
+                    hideWarning();
                 }
             });
         }
@@ -201,8 +191,7 @@ function setIntervalFromHost() {
 // --- Geofence Logic ---
 function isInsideGeofence(user) {
     if (!user || !user.location || typeof user.location.lat !== 'number' || typeof user.location.lng !== 'number') {
-        console.warn("Skipping user with invalid coordinates:", user);
-        return true; // Avoid false warnings for invalid data
+        return true; // Treat users with invalid or null locations as inside geofence
     }
 
     if (boxList.length === 0) {
@@ -245,6 +234,11 @@ function updateUserList(users) {
     const ul = document.getElementById('userList');
     ul.innerHTML = '';
     users.forEach(user => {
+        if (!user.location) {
+            console.warn(`Skipping user with null location: ${user.name}`);
+            return; // Skip users with null locations
+        }
+
         const li = document.createElement('li');
         const inside = isInsideGeofence(user);
         li.textContent = user.name + (inside ? '' : ' ⚠️ OUTSIDE');
@@ -281,26 +275,42 @@ socket.on('updateInterval', interval => {
 
 // Update user list and markers
 socket.on('userList', users => {
-    // Remove old markers
-    for (const id in markers) map.removeLayer(markers[id]);
+    console.log("Received user list:", users); // Debug log to inspect user data
+    // Update user list and markers
+    for (const id in markers) map.removeLayer(markers[id]); // Remove old markers
     markers = {};
-    // Update user list UI
-    if (userListElement) userListElement.innerHTML = '';
+
+    if (userListElement) userListElement.innerHTML = ''; // Clear user list UI
     for (const id in users) {
         const user = users[id];
         const listItem = document.createElement('li');
         listItem.textContent = user.name;
         if (userListElement) userListElement.appendChild(listItem);
+
         if (user.location) {
             const marker = L.marker([user.location.lat, user.location.lng]).addTo(map);
             marker.bindPopup(user.name);
             markers[id] = marker;
         }
     }
+
     // Show host's box if present
     const host = Object.values(users).find(user => user.isHost);
     if (host && host.boxBounds) addBoxToMap(host.boxBounds);
-    updateUserList(users);
+
+    updateUserList(users); // Update the user list in the UI
+});
+
+socket.on('locationUpdate', ({ socketId, location }) => {
+    console.log(`Location update received: socketId=${socketId}, location=`, location);
+    if (markers[socketId]) {
+        markers[socketId].setLatLng([location.lat, location.lng]); // Update marker position
+    }
+    const user = Object.values(users).find(u => u.socketId === socketId);
+    if (user) {
+        user.location = location; // Update user location in the client-side user list
+        updateUserList(users); // Refresh the user list UI
+    }
 });
 
 // Receive and display box list (last 5 boxes)
