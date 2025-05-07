@@ -159,6 +159,8 @@ function clearBox() {
 }
 
 // --- Location Updates ---
+let userWasOutside = false; // Track if the user was previously outside the geofence
+
 function startLocationUpdates() {
     // Send location to server at set interval
     if (locationUpdateIntervalId) clearInterval(locationUpdateIntervalId);
@@ -171,12 +173,19 @@ function startLocationUpdates() {
                 };
                 socket.emit('locationUpdate', coords);
 
-                // Check if user is outside the map bounds
-                const warningDiv = document.getElementById('warning');
-                if (!isInMapBounds(coords.lat, coords.lng)) {
-                    if (warningDiv) warningDiv.style.display = 'block';
+                // Check if user is outside the geofence boundaries
+                const isOutside = boxList.length > 0 && !isInsideGeofence({ location: coords });
+
+                if (isOutside) {
+                    if (!userWasOutside) {
+                        showWarning("⚠️ You are outside the allowed area!");
+                        userWasOutside = true; // Mark user as outside
+                    }
                 } else {
-                    if (warningDiv) warningDiv.style.display = 'none';
+                    if (userWasOutside) {
+                        hideWarning();
+                        userWasOutside = false; // Reset the outside status
+                    }
                 }
             });
         }
@@ -191,32 +200,61 @@ function setIntervalFromHost() {
 
 // --- Geofence Logic ---
 function isInsideGeofence(user) {
-    if (!user || typeof user.lat !== 'number' || typeof user.lng !== 'number') {
+    if (!user || !user.location || typeof user.location.lat !== 'number' || typeof user.location.lng !== 'number') {
         console.warn("Skipping user with invalid coordinates:", user);
-        return false; // Treat invalid users as outside the geofence
+        return true; // Avoid false warnings for invalid data
     }
-    return isInMapBounds(user.lat, user.lng);
+
+    if (boxList.length === 0) {
+        return true; // No boxes on the map, treat as inside geofence
+    }
+
+    for (const box of boxList) {
+        const bounds = L.latLngBounds(
+            L.latLng(box.southWest.lat, box.southWest.lng),
+            L.latLng(box.northEast.lat, box.northEast.lng)
+        );
+
+        if (bounds.contains([user.location.lat, user.location.lng])) {
+            return true;
+        }
+    }
+
+    return false; // User is outside all geofence boxes
 }
 
-// --- User List Update ---
+function showWarning(message) {
+    const warningDiv = document.getElementById('warning');
+    warningDiv.textContent = message;
+    warningDiv.style.display = 'flex';
+    warningDiv.style.justifyContent = 'center';
+    warningDiv.style.alignItems = 'center';
+}
+
+function hideWarning() {
+    const warningDiv = document.getElementById('warning');
+    warningDiv.style.display = 'none';
+}
+
 function updateUserList(users) {
     // Ensure users is an array
     if (!Array.isArray(users)) {
         users = Object.values(users); // Convert object to array if necessary
     }
 
-    // Filter out invalid users
-    const validUsers = users.filter(user => typeof user.lat === 'number' && typeof user.lng === 'number');
-
     const ul = document.getElementById('userList');
     ul.innerHTML = '';
-    validUsers.forEach(user => {
+    users.forEach(user => {
         const li = document.createElement('li');
         const inside = isInsideGeofence(user);
         li.textContent = user.name + (inside ? '' : ' ⚠️ OUTSIDE');
         ul.appendChild(li);
-        if (!inside) {
-            console.warn(`${user.name} is outside the geofence!`);
+
+        // Show warning only if there are boxes on the map and the user is outside
+        if (boxList.length > 0 && !inside) {
+            showWarning(`⚠️ ${user.name} is outside the allowed area.`);
+        } else {
+            hideWarning();
         }
     });
 }
