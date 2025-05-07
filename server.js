@@ -12,68 +12,89 @@ app.use(express.static(path.join(__dirname, 'public')));
 const lobbies = {};
 
 io.on('connection', (socket) => {
+    console.log(`New connection: ${socket.id}`); // Debug log for new connection
+
     socket.on('joinLobby', ({ lobbyId, userName, isHost }) => {
+        console.log(`joinLobby event: socketId=${socket.id}, lobbyId=${lobbyId}, userName=${userName}, isHost=${isHost}`); // Debug log for joinLobby
+
         socket.join(lobbyId);
         socket.lobbyId = lobbyId;
         socket.userName = userName;
         socket.isHost = isHost;
         socket.updateInterval = 5000;
 
-        // Always use the correct structure
         if (!lobbies[lobbyId]) {
             lobbies[lobbyId] = { users: {}, boxes: [] };
+            console.log(`Created new lobby: ${lobbyId}`); // Debug log for new lobby creation
+        }
+
+        if (isHost) {
+            console.log(`Host ${userName} reconnected. Clearing box list for lobby ${lobbyId}.`); // Debug log for host reconnection
+            lobbies[lobbyId].boxes = [];
+            io.to(lobbyId).emit('boxList', []);
         }
 
         lobbies[lobbyId].users[socket.id] = { name: userName, location: null, interval: 5000, isHost };
 
-        // Send all boxes to the new user
-        socket.emit('boxList', lobbies[lobbyId].boxes);
+        const boxes = lobbies[lobbyId].boxes.slice(-5);
+        socket.emit('boxList', boxes);
+        console.log(`Sent last 5 boxes to ${userName}:`, boxes); // Debug log for box list
 
         io.to(lobbyId).emit('userList', lobbies[lobbyId].users);
+        console.log(`Updated user list for lobby ${lobbyId}:`, lobbies[lobbyId].users); // Debug log for user list
     });
 
     socket.on('locationUpdate', (location) => {
+        console.log(`locationUpdate event: socketId=${socket.id}, location=${JSON.stringify(location)}`); // Debug log for location update
         const lobby = lobbies[socket.lobbyId];
         if (lobby && lobby.users[socket.id]) {
             lobby.users[socket.id].location = location;
             io.to(socket.lobbyId).emit('userList', lobby.users);
+            console.log(`Updated location for user ${socket.userName} in lobby ${socket.lobbyId}`); // Debug log for location update
         }
     });
 
     socket.on('setUpdateInterval', (interval) => {
+        console.log(`setUpdateInterval event: socketId=${socket.id}, interval=${interval}`); // Debug log for event trigger
         if (socket.isHost) {
+            console.log(`Host ${socket.userName} set update interval to ${interval} ms`); // Debug log for host action
             for (const id in lobbies[socket.lobbyId].users) {
                 lobbies[socket.lobbyId].users[id].interval = interval;
             }
             io.to(socket.lobbyId).emit('updateInterval', interval);
+            console.log(`Broadcasted new update interval to lobby ${socket.lobbyId}`); // Debug log for broadcast
+        } else {
+            console.warn(`Non-host user ${socket.userName} attempted to set update interval.`); // Warning for unauthorized action
         }
-    });
-
-    socket.on('drawBox', (boxBounds) => {
-        if (socket.isHost) {
-            // Store and broadcast the box
-            lobbies[socket.lobbyId].boxes.push(boxBounds);
-            io.to(socket.lobbyId).emit('newBox', boxBounds);
-        }
-    });
-
-    socket.on('draw-box', (box) => {
-        io.emit('draw-box', box);
     });
 
     socket.on('draw-rectangle', (bounds) => {
-        io.emit('draw-rectangle', bounds);
+        console.log(`draw-rectangle event: socketId=${socket.id}, bounds=${JSON.stringify(bounds)}`); // Debug log for event trigger
+        if (socket.isHost) {
+            console.log(`Host ${socket.userName} drew a new box:`, bounds); // Debug log for new box
+            lobbies[socket.lobbyId].boxes.push(bounds);
+            if (lobbies[socket.lobbyId].boxes.length > 5) {
+                lobbies[socket.lobbyId].boxes.shift();
+            }
+            io.to(socket.lobbyId).emit('newBox', bounds);
+            io.to(socket.lobbyId).emit('boxList', lobbies[socket.lobbyId].boxes);
+            console.log(`Updated box list for lobby ${socket.lobbyId}:`, lobbies[socket.lobbyId].boxes); // Debug log for updated box list
+        } else {
+            console.warn(`Non-host user ${socket.userName} attempted to draw a box.`); // Warning for unauthorized action
+        }
     });
 
     socket.on('disconnect', () => {
+        console.log(`Disconnect event: socketId=${socket.id}`); // Debug log for disconnection
         const lobby = lobbies[socket.lobbyId];
         if (lobby) {
             delete lobby.users[socket.id];
             io.to(socket.lobbyId).emit('userList', lobby.users);
+            console.log(`Removed user ${socket.userName} from lobby ${socket.lobbyId}`); // Debug log for user removal
         }
     });
 });
 
 server.listen(3000, () => {
-    console.log('Server kører på http://localhost:3000');
+    console.log('Server running at http://localhost:3000'); // Debug log for server start
 });

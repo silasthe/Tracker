@@ -31,19 +31,27 @@
     <button onclick="joinLobby()">Join</button>
     <div id="map"></div>
     
-    <label id="intervalControl" style="display:none;">
+    <label id="intervalControl" style="display: none;">
         Update interval (ms):
         <input id="interval" type="number" value="5000">
         <button onclick="setIntervalFromHost()">Set</button>
     </label>
+    <script>
+        document.getElementById('isHost').addEventListener('change', function() {
+            const intervalControl = document.getElementById('intervalControl');
+            if (this.checked) {
+                intervalControl.style.display = 'block';
+            } else {
+                intervalControl.style.display = 'none';
+            }
+        });
+    </script>
 
     <div id="userListContainer">
         <h3>Users in Lobby:</h3>
         <ul id="userList"></ul>
     </div>
-
-    <canvas id="canvas" width="800" height="600" style="border:1px solid #000"></canvas>
-
+    
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="script.js"></script>

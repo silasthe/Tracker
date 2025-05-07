@@ -1,55 +1,17 @@
 const socket = io();
-let map, marker;
+let map, drawnBox = null, tempBox = null;
 let lobbyId, userName, isHost, updateInterval = 5000;
 let markers = {};
-let drawnBox = null;
 let locationUpdateIntervalId = null;
-let tempBox = null; // Track the temporary rectangle during drawing
-const boxList = []; // Maintain a list of all boxes
+const boxList = []; // List of all boxes (usually only one is shown)
 
-let rectangle = null;
-let drawingRect = false;
-let rectStartLatLng = null;
+// --- UI Elements ---
+const intervalControl = document.getElementById('intervalControl');
+const userListElement = document.getElementById('userList');
+const boxListElement = document.getElementById('boxList');
+const clearBoxButton = document.getElementById('clearBoxButton');
 
-// Canvas setup
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-let drawing = false;
-let startX, startY;
-
-// Host draws a box
-canvas.addEventListener('mousedown', (e) => {
-    drawing = true;
-    startX = e.offsetX;
-    startY = e.offsetY;
-});
-
-canvas.addEventListener('mouseup', (e) => {
-    if (!drawing) return;
-    drawing = false;
-    const endX = e.offsetX;
-    const endY = e.offsetY;
-    const box = {
-        x: Math.min(startX, endX),
-        y: Math.min(startY, endY),
-        width: Math.abs(endX - startX),
-        height: Math.abs(endY - startY)
-    };
-    drawBox(box);
-    socket.emit('draw-box', box); // Send to server
-});
-
-// Draw box on canvas
-function drawBox(box) {
-    ctx.strokeStyle = 'red';
-    ctx.strokeRect(box.x, box.y, box.width, box.height);
-}
-
-// Listen for box events from server
-socket.on('draw-box', (box) => {
-    drawBox(box);
-});
-
+// --- Lobby Join ---
 function joinLobby() {
     lobbyId = document.getElementById('lobbyId').value;
     userName = document.getElementById('userName').value;
@@ -58,40 +20,52 @@ function joinLobby() {
     if (!lobbyId || !userName) return alert("Fill all fields!");
 
     socket.emit('joinLobby', { lobbyId, userName, isHost });
-    if (isHost) document.getElementById('intervalControl').style.display = 'block';
+    if (isHost && intervalControl) intervalControl.style.display = 'block';
     initMap();
-    startLocationUpdates();
+    // Start location updates only after a user gesture
+    document.getElementById('map').addEventListener('click', startLocationUpdates, { once: true });
 }
 
+// --- Map Initialization ---
 function initMap() {
-    if (map) {
-        console.warn("Map is already initialized.");
-        return;
-    }
-    console.log("Initializing map...");
+    if (map) return; // Prevent re-initialization
     map = L.map('map').setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-    console.log("Map initialized.");
+    addDrawingControl();
+    addDeleteBoxControl();
 }
 
+// --- Drawing Controls ---
 function addDrawingControl() {
+    // Adds a button to enable drawing mode (host only)
     const DrawingControl = L.Control.extend({
-        options: {
-            position: 'topleft' // Position it under the zoom controls
-        },
+        options: { position: 'topleft' },
         onAdd: function () {
             const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
             const button = L.DomUtil.create('a', '', container);
             button.innerHTML = '□';
-            button.title = 'Enable Drawing Mode';
+            button.title = 'Draw Box';
             button.href = '#';
-            button.style.width = '30px'; // Match the size of the zoom buttons
-            button.style.height = '30px'; // Match the size of the zoom buttons
-            button.style.lineHeight = '30px'; // Center the text vertically
-            button.style.textAlign = 'center'; // Center the text horizontally
-            button.style.fontSize = '18px'; // Match the font size of the zoom buttons
+            // Style button
+            button.style.width = button.style.height = '30px';
+            button.style.lineHeight = '30px';
+            button.style.textAlign = 'center';
+            button.style.fontSize = '18px';
+
+            // Show only for host
+            function updateVisibility() {
+                container.style.display = isHost ? '' : 'none';
+            }
+            updateVisibility();
+            const hostCheckbox = document.getElementById('isHost');
+            if (hostCheckbox) {
+                hostCheckbox.addEventListener('change', function() {
+                    isHost = this.checked;
+                    updateVisibility();
+                });
+            }
 
             L.DomEvent.on(button, 'click', (e) => {
                 L.DomEvent.stopPropagation(e);
@@ -102,23 +76,20 @@ function addDrawingControl() {
             return container;
         }
     });
-
     map.addControl(new DrawingControl());
 }
 
 function addDeleteBoxControl() {
+    // Adds a button to clear the drawn box
     const DeleteBoxControl = L.Control.extend({
-        options: {
-            position: 'topleft' // Position it under the drawing button
-        },
+        options: { position: 'topleft' },
         onAdd: function () {
             const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
             const button = L.DomUtil.create('a', '', container);
-            button.innerHTML = '✖'; // Use an "X" symbol for delete
+            button.innerHTML = '✖';
             button.title = 'Delete Box';
             button.href = '#';
-            button.style.width = '30px'; // Match the size of the zoom buttons
-            button.style.height = '30px';
+            button.style.width = button.style.height = '30px';
             button.style.lineHeight = '30px';
             button.style.textAlign = 'center';
             button.style.fontSize = '18px';
@@ -132,17 +103,65 @@ function addDeleteBoxControl() {
             return container;
         }
     });
-
     map.addControl(new DeleteBoxControl());
 }
 
-function startLocationUpdates() {
-    console.log("Starting location updates...");
-    if (locationUpdateIntervalId) {
-        clearInterval(locationUpdateIntervalId);
-        console.log("Cleared existing location update interval.");
-    }
+// --- Drawing Logic (Leaflet only, one rectangle at a time) ---
+function enableDrawingMode() {
+    // Only host can draw
+    if (!isHost) return console.warn("Only the host can draw the playing area.");
+    // Start drawing on mousedown
+    map.once('mousedown', function(e) {
+        const startLatLng = e.latlng;
+        tempBox = L.rectangle([startLatLng, startLatLng], { color: 'blue', weight: 2 }).addTo(map);
 
+        function onMove(moveEvent) {
+            tempBox.setBounds([startLatLng, moveEvent.latlng]);
+        }
+        function onMouseUp(endEvent) {
+            map.off('mousemove', onMove);
+            map.removeLayer(tempBox);
+            tempBox = null;
+            if (drawnBox) map.removeLayer(drawnBox);
+            const bounds = L.latLngBounds(startLatLng, endEvent.latlng);
+            drawnBox = L.rectangle(bounds, { color: 'red', weight: 2 }).addTo(map);
+            // Emit box bounds to server
+            socket.emit('draw-rectangle', {
+                southWest: bounds.getSouthWest(),
+                northEast: bounds.getNorthEast()
+            });
+        }
+        map.on('mousemove', onMove);
+        map.once('mouseup', onMouseUp);
+    });
+}
+
+// --- Box Management ---
+function addBoxToMap(boxBounds) {
+    // Remove previous box
+    if (drawnBox) map.removeLayer(drawnBox);
+    drawnBox = L.rectangle([
+        [boxBounds.southWest.lat, boxBounds.southWest.lng],
+        [boxBounds.northEast.lat, boxBounds.northEast.lng]
+    ], { color: 'red', weight: 2 }).addTo(map);
+}
+
+function clearBox() {
+    // Remove any drawn box from map
+    if (drawnBox) {
+        map.removeLayer(drawnBox);
+        drawnBox = null;
+    }
+    if (tempBox) {
+        map.removeLayer(tempBox);
+        tempBox = null;
+    }
+}
+
+// --- Location Updates ---
+function startLocationUpdates() {
+    // Send location to server at set interval
+    if (locationUpdateIntervalId) clearInterval(locationUpdateIntervalId);
     locationUpdateIntervalId = setInterval(() => {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(position => {
@@ -150,221 +169,138 @@ function startLocationUpdates() {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude
                 };
-                console.log("Location obtained:", coords);
                 socket.emit('locationUpdate', coords);
-            }, error => {
-                console.error("Error obtaining location:", error);
             });
-        } else {
-            console.warn("Geolocation is not supported by this browser.");
         }
     }, updateInterval);
 }
 
 function setIntervalFromHost() {
+    // Host sets location update interval
     const interval = parseInt(document.getElementById('interval').value);
-    if (!isNaN(interval)) {
-        console.log("Setting update interval to:", interval);
-        socket.emit('setUpdateInterval', interval);
-    } else {
-        console.warn("Invalid interval value entered.");
-    }
+    if (!isNaN(interval)) socket.emit('setUpdateInterval', interval);
 }
 
+// --- Geofence Logic ---
+function isInsideGeofence(latlng) {
+    if (!drawnBox || !drawnBox.getBounds || !drawnBox.getBounds().isValid()) {
+        console.warn("Geofence is not defined or has invalid bounds.");
+        return true; // Default to true if no valid geofence exists
+    }
+    return drawnBox.getBounds().contains(latlng);
+}
+
+function updateUserList(users) {
+    // Ensure users is an array
+    if (!Array.isArray(users)) {
+        users = Object.values(users); // Convert object to array if necessary
+    }
+
+    const ul = document.getElementById('userList');
+    ul.innerHTML = '';
+    users.forEach(user => {
+        const li = document.createElement('li');
+        const inside = isInsideGeofence(L.latLng(user.lat, user.lng));
+        li.textContent = user.name + (inside ? '' : ' ⚠️ OUTSIDE');
+        ul.appendChild(li);
+        if (!inside) {
+            console.warn(`${user.name} is outside the geofence!`);
+        }
+    });
+}
+
+// --- Socket Events ---
+
+// Update interval from host
 socket.on('updateInterval', interval => {
-    console.log("Update interval received from host:", interval);
     updateInterval = interval;
-    startLocationUpdates(); // Restart location updates with the new interval
+    startLocationUpdates();
 });
 
+// Update user list and markers
 socket.on('userList', users => {
-    console.log("Received updated user list:", users);
-    for (const id in markers) {
-        map.removeLayer(markers[id]);
-    }
+    // Remove old markers
+    for (const id in markers) map.removeLayer(markers[id]);
     markers = {};
-
-    // Update the user list in the UI
-    const userListElement = document.getElementById('userList');
-    userListElement.innerHTML = ''; // Clear the existing list
+    // Update user list UI
+    if (userListElement) userListElement.innerHTML = '';
     for (const id in users) {
         const user = users[id];
         const listItem = document.createElement('li');
         listItem.textContent = user.name;
-        userListElement.appendChild(listItem);
-
+        if (userListElement) userListElement.appendChild(listItem);
         if (user.location) {
-            console.log(`Adding marker for user: ${user.name} at location:`, user.location);
             const marker = L.marker([user.location.lat, user.location.lng]).addTo(map);
             marker.bindPopup(user.name);
             markers[id] = marker;
         }
     }
-
-    // Check if the host has drawn a box and display it
+    // Show host's box if present
     const host = Object.values(users).find(user => user.isHost);
-    if (host && host.boxBounds) {
-        console.log("Host has drawn a box. Displaying it on the map:", host.boxBounds);
-        if (drawnBox) {
-            map.removeLayer(drawnBox);
-        }
-        drawnBox = L.rectangle([
-            [host.boxBounds.southWest.lat, host.boxBounds.southWest.lng],
-            [host.boxBounds.northEast.lat, host.boxBounds.northEast.lng]
-        ], { color: 'red', weight: 2 }).addTo(map);
-    }
+    if (host && host.boxBounds) addBoxToMap(host.boxBounds);
+    updateUserList(users);
 });
 
+// Receive and display box list (last 5 boxes)
 socket.on('boxList', (boxes) => {
-    boxList.length = 0; // Clear the array
-    const boxListElement = document.getElementById('boxList');
-    boxListElement.innerHTML = ''; // Clear the HTML list
+    // Clear existing boxes and update the boxList array
+    clearBox(); // Clear any drawn box on the map
+    boxList.length = 0; // Clear the client-side box list
+    boxList.push(...boxes); // Update the boxList array with the new data
 
-    boxes.forEach((boxBounds, idx) => {
-        boxList.push(boxBounds);
-        addBoxToMap(boxBounds);
-        // Add to HTML
-        const listItem = document.createElement('li');
-        listItem.textContent = `Box ${idx + 1}: SW(${boxBounds.southWest.lat.toFixed(4)}, ${boxBounds.southWest.lng.toFixed(4)}) NE(${boxBounds.northEast.lat.toFixed(4)}, ${boxBounds.northEast.lng.toFixed(4)})`;
-        boxListElement.appendChild(listItem);
-    });
-});
-
-socket.on('newBox', (boxBounds) => {
-    boxList.push(boxBounds);
-    addBoxToMap(boxBounds);
-    // Add to HTML
-    const boxListElement = document.getElementById('boxList');
-    const listItem = document.createElement('li');
-    listItem.textContent = `Box ${boxList.length}: SW(${boxBounds.southWest.lat.toFixed(4)}, ${boxBounds.southWest.lng.toFixed(4)}) NE(${boxBounds.northEast.lat.toFixed(4)}, ${boxBounds.northEast.lng.toFixed(4)})`;
-    boxListElement.appendChild(listItem);
-});
-
-function addBoxToMap(boxBounds) {
-    L.rectangle([
-        [boxBounds.southWest.lat, boxBounds.southWest.lng],
-        [boxBounds.northEast.lat, boxBounds.northEast.lng]
-    ], { color: 'red', weight: 2 }).addTo(map);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Initialize the map and add the drawing control after the map is ready
-    initMap();
-    addDrawingControl();
-    addDeleteBoxControl();
-});
-
-// Host draws rectangle and emits bounds
-if (isHost) {
-    map.on('mousedown', function(e) {
-        drawingRect = true;
-        rectStartLatLng = e.latlng;
-        if (rectangle) {
-            map.removeLayer(rectangle);
-            rectangle = null;
-        }
-    });
-
-    map.on('mousemove', function(e) {
-        if (!drawingRect) return;
-        if (rectangle) map.removeLayer(rectangle);
-        rectangle = L.rectangle([rectStartLatLng, e.latlng], {color: "red", weight: 2, fillOpacity: 0.2}).addTo(map);
-    });
-
-    map.on('mouseup', function(e) {
-        if (!drawingRect) return;
-        drawingRect = false;
-        if (rectangle) {
-            const bounds = rectangle.getBounds();
-            socket.emit('draw-rectangle', {
-                southWest: bounds.getSouthWest(),
-                northEast: bounds.getNorthEast()
-            });
-        }
-    });
-}
-
-// All clients (host and users) listen for rectangle event and draw it
-socket.on('draw-rectangle', (data) => {
-    if (rectangle) map.removeLayer(rectangle);
-    rectangle = L.rectangle([
-        [data.southWest.lat, data.southWest.lng],
-        [data.northEast.lat, data.northEast.lng]
-    ], {color: "red", weight: 2, fillOpacity: 0.2}).addTo(map);
-});
-
-function enableDrawingMode() {
-    if (!isHost) {
-        console.warn("Only the host can draw the playing area.");
-        return;
-    }
-    console.log("Drawing mode enabled. Click and drag to draw a box.");
-    map.on('mousedown', startDrawing);
-}
-
-function startDrawing(e) {
-    const startLatLng = e.latlng;
-    console.log("Drawing started at:", startLatLng);
-
-    if (tempBox) {
-        map.removeLayer(tempBox); // Remove any existing temporary rectangle
-    }
-
-    tempBox = L.rectangle([startLatLng, startLatLng], { color: 'blue', weight: 2 }).addTo(map);
-
-    map.on('mousemove', (moveEvent) => {
-        const endLatLng = moveEvent.latlng;
-        tempBox.setBounds([startLatLng, endLatLng]);
-    });
-
-    map.once('mouseup', (endEvent) => {
-        const endLatLng = endEvent.latlng;
-        console.log("Drawing ended at:", endLatLng);
-
-        if (drawnBox) {
-            map.removeLayer(drawnBox); // Remove the previous finalized box
-        }
-        drawnBox = L.rectangle([startLatLng, endLatLng], { color: 'red', weight: 2 }).addTo(map);
-        console.log("Final box bounds:", drawnBox.getBounds());
-
-        // Broadcast the box bounds to the server
-        const boxBounds = drawnBox.getBounds();
-        socket.emit('drawBox', {
-            northEast: boxBounds.getNorthEast(),
-            southWest: boxBounds.getSouthWest()
+    // Update the UI list
+    if (boxListElement) {
+        boxListElement.innerHTML = ''; // Clear the existing list
+        boxList.forEach((box, index) => {
+            const listItem = document.createElement('li');
+            listItem.textContent = `Box ${index + 1}: SW(${box.southWest.lat.toFixed(4)}, ${box.southWest.lng.toFixed(4)}) NE(${box.northEast.lat.toFixed(4)}, ${box.northEast.lng.toFixed(4)})`;
+            boxListElement.appendChild(listItem);
         });
-
-        map.off('mousemove');
-        map.off('mousedown');
-        map.removeLayer(tempBox); // Remove the temporary rectangle after finalizing
-        tempBox = null; // Clear the temporary rectangle reference
-    });
-}
-
-socket.on('updateBox', (boxBounds) => {
-    console.log("Received updated box bounds from host:", boxBounds);
-    if (drawnBox) {
-        map.removeLayer(drawnBox); // Remove any existing box
     }
-    // Add the new box to the map
-    drawnBox = L.rectangle([
-        [boxBounds.southWest.lat, boxBounds.southWest.lng],
-        [boxBounds.northEast.lat, boxBounds.northEast.lng]
-    ], { color: 'red', weight: 2 }).addTo(map);
-    console.log("Box added to the map.");
+
+    // Add the latest box to the map
+    if (boxList.length > 0) {
+        const latestBox = boxList[boxList.length - 1];
+        addBoxToMap(latestBox);
+    }
+
+    console.log('Updated box list:', boxList); // Log the updated box list to the console
 });
 
-function clearBox() {
-    if (drawnBox) {
-        map.removeLayer(drawnBox); // Remove the finalized box
-        drawnBox = null;
-        console.log("Finalized box cleared.");
+// Receive new box from server
+socket.on('newBox', (boxBounds) => {
+    console.log('New box received:', boxBounds); // Debug log for new box
+    boxList.push(boxBounds);
+    if (boxList.length > 5) {
+        boxList.shift(); // Keep only the last 5 boxes
     }
-    if (tempBox) {
-        map.removeLayer(tempBox); // Remove the temporary rectangle
-        tempBox = null;
-        console.log("Temporary box cleared.");
-    }
-}
 
-document.getElementById('clearBoxButton').addEventListener('click', clearBox);
+    // Update the UI list
+    if (boxListElement) {
+        boxListElement.innerHTML = ''; // Clear the existing list
+        boxList.forEach((box, index) => {
+            const listItem = document.createElement('li');
+            listItem.textContent = `Box ${index + 1}: SW(${box.southWest.lat.toFixed(4)}, ${box.southWest.lng.toFixed(4)}) NE(${box.northEast.lat.toFixed(4)}, ${box.northEast.lng.toFixed(4)})`;
+            boxListElement.appendChild(listItem);
+        });
+    }
+
+    // Add the new box to the map
+    addBoxToMap(boxBounds);
+
+    console.log('Updated box list:', boxList); // Debug log for updated box list
+});
+
+// Draw rectangle from server event
+socket.on('draw-rectangle', (data) => {
+    addBoxToMap(data);
+});
+
+// --- UI Event Listeners ---
+if (clearBoxButton) clearBoxButton.addEventListener('click', clearBox);
+
+// --- Notes ---
+// - Only one rectangle (box) is shown at a time on the map.
+// - Only the host can draw a box.
+// - All drawing is handled via Leaflet, not canvas.
+// - Code is simplified for clarity and maintainability.
