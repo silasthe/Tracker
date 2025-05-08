@@ -205,27 +205,68 @@ function clearBox() {
 }
 
 // --- Location Updates ---
+let lastLocation = null; // Store the last location to compare changes
 function startLocationUpdates() {
-    // Send location to server at set interval
-    if (locationUpdateIntervalId) clearInterval(locationUpdateIntervalId);
-    locationUpdateIntervalId = setInterval(() => {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(position => {
+    // Clear any existing location update watcher
+    if (locationUpdateIntervalId) {
+        navigator.geolocation.clearWatch(locationUpdateIntervalId);
+        locationUpdateIntervalId = null;
+    }
+
+    if (navigator.geolocation) {
+        locationUpdateIntervalId = navigator.geolocation.watchPosition(
+            position => {
                 const coords = {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude
                 };
-                socket.emit('locationUpdate', coords);
 
-                // Check if user is outside the geofence boundaries
-                if (boxList.length > 0 && !isInsideGeofence({ location: coords })) {
-                    showWarning("⚠️ You are outside the allowed area!");
-                } else {
-                    hideWarning();
+                // Check if the location has changed significantly
+                if (
+                    !lastLocation ||
+                    getDistance(lastLocation, coords) > 5 // Threshold: 5 meters
+                ) {
+                    lastLocation = coords; // Update last location
+                    socket.emit('locationUpdate', coords);
+
+                    // Check if user is outside the geofence boundaries
+                    if (boxList.length > 0 && !isInsideGeofence({ location: coords })) {
+                        showWarning("⚠️ You are outside the allowed area!");
+                    } else {
+                        hideWarning();
+                    }
                 }
-            });
-        }
-    }, updateInterval);
+            },
+            error => {
+                console.error("Error watching location:", error.message);
+                alert("Unable to retrieve location. Please ensure location services are enabled.");
+            },
+            {
+                enableHighAccuracy: true, // Use high accuracy for better results
+                maximumAge: 0,           // Do not use cached positions
+                timeout: 10000           // Timeout after 10 seconds
+            }
+        );
+    } else {
+        alert("Geolocation is not supported by your browser.");
+    }
+}
+
+// Utility function to calculate the distance between two coordinates (Haversine formula)
+function getDistance(coord1, coord2) {
+    const toRadians = degrees => degrees * (Math.PI / 180);
+    const earthRadius = 6371000; // Earth's radius in meters
+
+    const dLat = toRadians(coord2.lat - coord1.lat);
+    const dLng = toRadians(coord2.lng - coord1.lng);
+
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRadians(coord1.lat)) * Math.cos(toRadians(coord2.lat)) *
+        Math.sin(dLng / 2) ** 2;
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadius * c; // Distance in meters
 }
 
 function setIntervalFromHost() {
