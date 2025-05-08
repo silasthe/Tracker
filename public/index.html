@@ -95,39 +95,100 @@
             margin: 0;
             font-size: 24px;
         }
+
+        /* Login Screen Styles */
+        #login-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #ecf0f1;
+            position: relative;
+        }
+
+        #login-screen h2 {
+            margin-bottom: 20px;
+            font-size: 28px;
+            color: #2c3e50;
+        }
+
+        #login-screen input {
+            margin-bottom: 10px;
+            width: 300px;
+        }
+
+        #login-screen button {
+            width: 100px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
 
-    <header>
-        <h1>Lobby Tracker</h1>
-        <div class="toolbar">
-            <input id="lobbyId" placeholder="Lobby ID">
-            <input id="userName" placeholder="Your Name">
-            <label><input type="checkbox" id="isHost"> Host?</label>
-            <button onclick="joinLobby()">Join</button>
+
+   
+    <!-- Login Screen -->
+    <div id="login-screen">
+        <h2>Join a Lobby</h2>
+        <input id="lobbyId" placeholder="Lobby ID">
+        <input id="userName" placeholder="Your Name">
+        <label><input type="checkbox" id="isHost"> Host?</label>
+        <button onclick="joinLobby()"  id="joinBtn">Join</button>
+    </div>
+
+    <!-- App Content -->
+    <div id="app-content" style="display: none;">
+        <header>
+            <h1>Lobby Tracker</h1>
+            <div class="toolbar" id="intervalControl">
+                <span style="color: black;"> <label for="interval">Update interval (ms):</label>:</span>
+                <input id="interval" type="number" value="5000">
+                <button onclick="setIntervalFromHost()">Set</button>   
+            </div>
+        </header>
+
+        <div id="intervalControl">
+          
         </div>
-    </header>
 
-    <div id="intervalControl">
-        Update interval (ms):
-        <input id="interval" type="number" value="5000">
-        <button onclick="setIntervalFromHost()">Set</button>
+        <div id="map"></div>
+
+        <div id="userListContainer">
+            <h3>Users in Lobby:</h3>
+            <ul id="userList"></ul>
+        </div>
+
+        <div id="warning"></div>
     </div>
-
-    <div id="map"></div>
-
-    <div id="userListContainer">
-        <h3>Users in Lobby:</h3>
-        <ul id="userList"></ul>
-    </div>
-
-    <div id="warning"></div>
 
     <script>
         document.getElementById('isHost').addEventListener('change', function () {
             const intervalControl = document.getElementById('intervalControl');
             intervalControl.style.display = this.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('joinBtn').addEventListener('click', () => {
+            const lobbyIdInput = document.getElementById('lobbyId').value; // Corrected ID
+            const nameInput = document.getElementById('userName').value; // Corrected ID
+            const isHost = document.getElementById('isHost').checked;
+
+            if (!lobbyIdInput || !nameInput) {
+                alert("Please fill in all fields.");
+                return;
+            }
+
+            // Set values for the main app
+            document.getElementById('lobbyId').value = lobbyIdInput;
+            document.getElementById('userName').value = nameInput;
+            document.getElementById('isHost').checked = isHost;
+
+            // Hide login screen and show app content
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app-content').style.display = 'block';
+
+            // Join the lobby
+            joinLobby();
         });
     </script>
 
@@ -159,8 +220,7 @@
         }
 
         socket.emit('joinLobby', { lobbyId, userName, isHost });
-    }               
+    }
 
 
 
-    

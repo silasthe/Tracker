@@ -37,7 +37,7 @@ io.on('connection', (socket) => {
 
         lobbies[lobbyId].users[socket.id] = { 
             name: userName, 
-            location: { lat: 0, lng: 0 }, // Default location
+            location: null, // Set location to null initially
             interval: 5000, 
             isHost 
         };
@@ -46,7 +46,9 @@ io.on('connection', (socket) => {
         socket.emit('boxList', boxes);
         console.log(`Sent last 5 boxes to ${userName}:`, boxes); // Debug log for box list
 
-        io.to(lobbyId).emit('userList', lobbies[lobbyId].users);
+        io.to(lobbyId).emit('userList', Object.fromEntries(
+            Object.entries(lobbies[lobbyId].users).filter(([_, user]) => user.location && user.location.lat !== 0 && user.location.lng !== 0)
+        ));
         console.log(`Updated user list for lobby ${lobbyId}:`, lobbies[lobbyId].users); // Debug log for user list
     });
 
@@ -54,8 +56,20 @@ io.on('connection', (socket) => {
         console.log(`locationUpdate event: socketId=${socket.id}, location=${JSON.stringify(location)}`); // Debug log for location update
         const lobby = lobbies[socket.lobbyId];
         if (lobby && lobby.users[socket.id]) {
-            lobby.users[socket.id].location = location;
-            io.to(socket.lobbyId).emit('userList', lobby.users);
+            // Validate location before updating
+            if (location.lat !== 0 || location.lng !== 0) {
+                lobby.users[socket.id].location = location;
+            } else {
+                console.warn(`Invalid location received for user ${socket.userName}:`, location);
+                lobby.users[socket.id].location = null; // Set to null if invalid
+            }
+
+            // Filter out users with invalid locations before broadcasting
+            const filteredUsers = Object.fromEntries(
+                Object.entries(lobby.users).filter(([_, user]) => user.location && user.location.lat !== 0 && user.location.lng !== 0)
+            );
+
+            io.to(socket.lobbyId).emit('userList', filteredUsers);
             console.log(`Updated location for user ${socket.userName} in lobby ${socket.lobbyId}`); // Debug log for location update
         }
     });
@@ -95,7 +109,11 @@ io.on('connection', (socket) => {
         const lobby = lobbies[socket.lobbyId];
         if (lobby) {
             delete lobby.users[socket.id];
-            io.to(socket.lobbyId).emit('userList', lobby.users);
+            // Filter out users with invalid locations before broadcasting
+            const filteredUsers = Object.fromEntries(
+                Object.entries(lobby.users).filter(([_, user]) => user.location && user.location.lat !== 0 && user.location.lng !== 0)
+            );
+            io.to(socket.lobbyId).emit('userList', filteredUsers);
             console.log(`Removed user ${socket.userName} from lobby ${socket.lobbyId}`); // Debug log for user removal
         }
     });

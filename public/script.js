@@ -29,13 +29,33 @@ function joinLobby() {
 // --- Map Initialization ---
 function initMap() {
     if (map) return; // Prevent re-initialization
+
+    const mapContainer = document.getElementById('map');
+    if (!mapContainer || mapContainer.offsetHeight === 0) {
+        console.error("Map container is not properly styled or visible.");
+        return;
+    }
+
     map = L.map('map').setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
+
     addDrawingControl();
     addDeleteBoxControl();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Ensure the map container has a defined height
+    const mapContainer = document.getElementById('map');
+    if (mapContainer) {
+        mapContainer.style.height = '100vh'; // Set the height to fill the viewport
+        mapContainer.style.width = '100%';  // Ensure full width
+    }
+
+    // Request location permission
+    requestLocationPermission();
+});
 
 // --- Drawing Controls ---
 function addDrawingControl() {
@@ -110,6 +130,12 @@ function addDeleteBoxControl() {
 function enableDrawingMode() {
     // Only host can draw
     if (!isHost) return console.warn("Only the host can draw the playing area.");
+
+    // Disable map interactions
+    map.dragging.disable();
+    map.doubleClickZoom.disable();
+    map.scrollWheelZoom.disable();
+
     // Start drawing on mousedown
     map.once('mousedown', function(e) {
         const startLatLng = e.latlng;
@@ -125,11 +151,17 @@ function enableDrawingMode() {
             if (drawnBox) map.removeLayer(drawnBox);
             const bounds = L.latLngBounds(startLatLng, endEvent.latlng);
             drawnBox = L.rectangle(bounds, { color: 'red', weight: 2 }).addTo(map);
+
             // Emit box bounds to server
             socket.emit('draw-rectangle', {
                 southWest: bounds.getSouthWest(),
                 northEast: bounds.getNorthEast()
             });
+
+            // Re-enable map interactions
+            map.dragging.enable();
+            map.doubleClickZoom.enable();
+            map.scrollWheelZoom.enable();
         }
         map.on('mousemove', onMove);
         map.once('mouseup', onMouseUp);
@@ -279,15 +311,20 @@ socket.on('userList', users => {
     if (userListElement) userListElement.innerHTML = ''; // Clear user list UI
     for (const id in users) {
         const user = users[id];
+
+        // Skip users with invalid or default locations
+        if (!user.location || user.location.lat === 0 && user.location.lng === 0) {
+            console.warn(`Skipping user with invalid location: ${id}`);
+            continue;
+        }
+
         const listItem = document.createElement('li');
         listItem.textContent = user.name;
         if (userListElement) userListElement.appendChild(listItem);
 
-        if (user.location) {
-            const marker = L.marker([user.location.lat, user.location.lng]).addTo(map);
-            marker.bindPopup(user.name);
-            markers[id] = marker;
-        }
+        const marker = L.marker([user.location.lat, user.location.lng]).addTo(map);
+        marker.bindPopup(user.name);
+        markers[id] = marker;
     }
 
     // Show host's box if present
@@ -366,6 +403,29 @@ socket.on('draw-rectangle', (data) => {
 
 // --- UI Event Listeners ---
 if (clearBoxButton) clearBoxButton.addEventListener('click', clearBox);
+
+document.getElementById('joinBtn').addEventListener('click', () => {
+    const lobbyIdInput = document.getElementById('lobbyId').value;
+    const nameInput = document.getElementById('nameInput').value;
+    const isHost = document.getElementById('hostCheckbox').checked;
+
+    if (!lobbyIdInput || !nameInput) {
+        alert("Please fill in all fields.");
+        return;
+    }
+
+    // Set values for the main app
+    document.getElementById('lobbyId').value = lobbyIdInput;
+    document.getElementById('userName').value = nameInput;
+    document.getElementById('isHost').checked = isHost;
+
+    // Hide login screen and show app content
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-content').style.display = 'block';
+
+    // Join the lobby
+    joinLobby();
+});
 
 // --- Notes ---
 // - Only one rectangle (box) is shown at a time on the map.
