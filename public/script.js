@@ -136,20 +136,28 @@ function enableDrawingMode() {
     map.doubleClickZoom.disable();
     map.scrollWheelZoom.disable();
 
-    // Start drawing on mousedown
-    map.once('mousedown', function(e) {
-        const startLatLng = e.latlng;
+    // Start drawing on mousedown or touchstart
+    function startDrawing(e) {
+        const startLatLng = e.latlng || map.mouseEventToLatLng(e.originalEvent.touches[0]);
         tempBox = L.rectangle([startLatLng, startLatLng], { color: 'blue', weight: 2 }).addTo(map);
 
         function onMove(moveEvent) {
-            tempBox.setBounds([startLatLng, moveEvent.latlng]);
+            const currentLatLng = moveEvent.latlng || map.mouseEventToLatLng(moveEvent.originalEvent.touches[0]);
+            tempBox.setBounds([startLatLng, currentLatLng]);
         }
-        function onMouseUp(endEvent) {
+
+        function endDrawing(endEvent) {
+            const endLatLng = endEvent.latlng || map.mouseEventToLatLng(endEvent.originalEvent.changedTouches[0]);
             map.off('mousemove', onMove);
+            map.off('touchmove', onMove);
+            map.off('mouseup', endDrawing);
+            map.off('touchend', endDrawing);
+
             map.removeLayer(tempBox);
             tempBox = null;
+
             if (drawnBox) map.removeLayer(drawnBox);
-            const bounds = L.latLngBounds(startLatLng, endEvent.latlng);
+            const bounds = L.latLngBounds(startLatLng, endLatLng);
             drawnBox = L.rectangle(bounds, { color: 'red', weight: 2 }).addTo(map);
 
             // Emit box bounds to server
@@ -163,9 +171,15 @@ function enableDrawingMode() {
             map.doubleClickZoom.enable();
             map.scrollWheelZoom.enable();
         }
+
         map.on('mousemove', onMove);
-        map.once('mouseup', onMouseUp);
-    });
+        map.on('touchmove', onMove);
+        map.once('mouseup', endDrawing);
+        map.once('touchend', endDrawing);
+    }
+
+    map.once('mousedown', startDrawing);
+    map.once('touchstart', startDrawing);
 }
 
 // --- Box Management ---

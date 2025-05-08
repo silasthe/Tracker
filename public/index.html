@@ -161,16 +161,13 @@
     </style>
 </head>
 <body>
-
-
-   
     <!-- Login Screen -->
     <div id="login-screen">
         <h2>Join a Lobby</h2>
         <input id="lobbyId" placeholder="Lobby ID">
         <input id="userName" placeholder="Your Name">
         <label><input type="checkbox" id="isHost"> Host?</label>
-        <button onclick="joinLobby()"  id="joinBtn">Join</button>
+        <button onclick="joinLobby()" id="joinBtn">Join</button>
     </div>
 
     <!-- App Content -->
@@ -180,13 +177,9 @@
             <div class="toolbar" id="intervalControl">
                 <span style="color: black;"> <label for="interval">Update interval (ms):</label>:</span>
                 <input id="interval" type="number" value="5000">
-                <button onclick="setIntervalFromHost()">Set</button>   
+                <button onclick="setIntervalFromHost()">Set</button>
             </div>
         </header>
-
-        <div id="intervalControl">
-          
-        </div>
 
         <div id="map"></div>
 
@@ -205,8 +198,8 @@
         });
 
         document.getElementById('joinBtn').addEventListener('click', () => {
-            const lobbyIdInput = document.getElementById('lobbyId').value; // Corrected ID
-            const nameInput = document.getElementById('userName').value; // Corrected ID
+            const lobbyIdInput = document.getElementById('lobbyId').value;
+            const nameInput = document.getElementById('userName').value;
             const isHost = document.getElementById('isHost').checked;
 
             if (!lobbyIdInput || !nameInput) {
