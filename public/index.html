@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lobby Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
@@ -115,12 +116,47 @@
 
         #login-screen input {
             margin-bottom: 10px;
-            width: 300px;
+            width: 90%; /* Adjusted for smaller screens */
+            max-width: 300px;
         }
 
         #login-screen button {
-            width: 100px;
+            width: 90%; /* Adjusted for smaller screens */
+            max-width: 300px;
             margin-top: 10px;
+        }
+
+        /* Responsive Styles */
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            #map {
+                height: 300px; /* Adjust map height for smaller screens */
+                width: 100%; /* Full width on smaller screens */
+            }
+
+            #userListContainer {
+                margin: 10px;
+                padding: 10px;
+            }
+
+            #warning {
+                font-size: 1.5rem; /* Adjust warning font size */
+                height: 20vh; /* Adjust warning height */
+                line-height: 20vh;
+            }
+
+            input, button, label {
+                font-size: 12px; /* Adjust font size for smaller screens */
+                padding: 5px 8px;
+            }
+
+            button {
+                width: 100%; /* Full width buttons for smaller screens */
+            }
         }
     </style>
 </head>
