@@ -1,6 +1,6 @@
 const socket = io();
 let map, drawnBox = null, tempBox = null;
-let lobbyId, userName, isHost, updateInterval = 5000;
+let lobbyId, userName, isHost, updateInterval = 10000; // Default update interval set to 10 seconds (10000 ms)
 let markers = {};
 let locationUpdateIntervalId = null;
 const boxList = []; // List of all boxes (usually only one is shown)
@@ -128,54 +128,94 @@ function addDeleteBoxControl() {
 
 // --- Drawing Logic (Leaflet only, one rectangle at a time) ---
 function enableDrawingMode() {
-    // Only host can draw
     if (!isHost) return console.warn("Only the host can draw the playing area.");
 
-    // Disable map interactions
     map.dragging.disable();
     map.doubleClickZoom.disable();
     map.scrollWheelZoom.disable();
+    document.body.classList.add('no-scroll');
 
-    // Start drawing on mousedown or touchstart
+    let startLatLng = null;
+
+    // Utility to get latlng from mouse or touch event
+    function getLatLngFromEvent(e) {
+        if (e.latlng) return e.latlng;
+        if (e.touches && e.touches.length > 0) {
+            // Touch start/move
+            const touch = e.touches[0];
+            const containerPoint = map.mouseEventToContainerPoint
+                ? map.mouseEventToContainerPoint(touch)
+                : map.layerPointToContainerPoint(touch);
+            return map.containerPointToLatLng(containerPoint);
+        }
+        if (e.changedTouches && e.changedTouches.length > 0) {
+            // Touch end
+            const touch = e.changedTouches[0];
+            const containerPoint = map.mouseEventToContainerPoint
+                ? map.mouseEventToContainerPoint(touch)
+                : map.layerPointToContainerPoint(touch);
+            return map.containerPointToLatLng(containerPoint);
+        }
+        return null;
+    }
+
     function startDrawing(e) {
-        const startLatLng = e.latlng || map.mouseEventToLatLng(e.originalEvent.touches[0]);
+        const eventLatLng = getLatLngFromEvent(e);
+        if (!eventLatLng) return;
+        startLatLng = eventLatLng;
         tempBox = L.rectangle([startLatLng, startLatLng], { color: 'blue', weight: 2 }).addTo(map);
-
-        function onMove(moveEvent) {
-            const currentLatLng = moveEvent.latlng || map.mouseEventToLatLng(moveEvent.originalEvent.touches[0]);
-            tempBox.setBounds([startLatLng, currentLatLng]);
-        }
-
-        function endDrawing(endEvent) {
-            const endLatLng = endEvent.latlng || map.mouseEventToLatLng(endEvent.originalEvent.changedTouches[0]);
-            map.off('mousemove', onMove);
-            map.off('touchmove', onMove);
-            map.off('mouseup', endDrawing);
-            map.off('touchend', endDrawing);
-
-            map.removeLayer(tempBox);
-            tempBox = null;
-
-            if (drawnBox) map.removeLayer(drawnBox);
-            const bounds = L.latLngBounds(startLatLng, endLatLng);
-            drawnBox = L.rectangle(bounds, { color: 'red', weight: 2 }).addTo(map);
-
-            // Emit box bounds to server
-            socket.emit('draw-rectangle', {
-                southWest: bounds.getSouthWest(),
-                northEast: bounds.getNorthEast()
-            });
-
-            // Re-enable map interactions
-            map.dragging.enable();
-            map.doubleClickZoom.enable();
-            map.scrollWheelZoom.enable();
-        }
 
         map.on('mousemove', onMove);
         map.on('touchmove', onMove);
         map.once('mouseup', endDrawing);
         map.once('touchend', endDrawing);
+    }
+
+    function onMove(e) {
+        const currentLatLng = getLatLngFromEvent(e);
+        if (tempBox && currentLatLng) {
+            tempBox.setBounds([startLatLng, currentLatLng]);
+        }
+    }
+
+    function endDrawing(e) {
+        const endLatLng = getLatLngFromEvent(e);
+        map.off('mousemove', onMove);
+        map.off('touchmove', onMove);
+        map.off('mouseup', endDrawing);
+        map.off('touchend', endDrawing);
+
+        if (tempBox) {
+            map.removeLayer(tempBox);
+            tempBox = null;
+        }
+
+        if (drawnBox) {
+            map.removeLayer(drawnBox);
+        }
+
+        if (!startLatLng || !endLatLng) {
+            // Re-enable map interactions and allow page scrolling
+            map.dragging.enable();
+            map.doubleClickZoom.enable();
+            map.scrollWheelZoom.enable();
+            document.body.classList.remove('no-scroll');
+            return;
+        }
+
+        const bounds = L.latLngBounds(startLatLng, endLatLng);
+        drawnBox = L.rectangle(bounds, { color: 'red', weight: 2 }).addTo(map);
+
+        // Emit box bounds to server
+        socket.emit('draw-rectangle', {
+            southWest: bounds.getSouthWest(),
+            northEast: bounds.getNorthEast()
+        });
+
+        map.dragging.enable();
+        map.doubleClickZoom.enable();
+        map.scrollWheelZoom.enable();
+        document.body.classList.remove('no-scroll');
     }
 
     map.once('mousedown', startDrawing);
@@ -206,38 +246,41 @@ function clearBox() {
 
 // --- Location Updates ---
 function startLocationUpdates() {
-    // Clear any existing location update watcher
+    // Clear any existing location update interval
     if (locationUpdateIntervalId) {
-        navigator.geolocation.clearWatch(locationUpdateIntervalId);
+        clearInterval(locationUpdateIntervalId);
         locationUpdateIntervalId = null;
     }
 
     if (navigator.geolocation) {
-        locationUpdateIntervalId = navigator.geolocation.watchPosition(
-            position => {
-                const coords = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
-                socket.emit('locationUpdate', coords);
+        locationUpdateIntervalId = setInterval(() => {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const coords = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
 
-                // Check if user is outside the geofence boundaries
-                if (boxList.length > 0 && !isInsideGeofence({ location: coords })) {
-                    showWarning("⚠️ You are outside the allowed area!");
-                } else {
-                    hideWarning();
+                    socket.emit('locationUpdate', coords);
+
+                    // Check if user is outside the geofence boundaries
+                    if (boxList.length > 0 && !isInsideGeofence({ location: coords })) {
+                        showWarning("⚠️ You are outside the allowed area!");
+                    } else {
+                        hideWarning();
+                    }
+                },
+                error => {
+                    console.error("Error retrieving location:", error.message);
+                    alert("Unable to retrieve location. Please ensure location services are enabled.");
+                },
+                {
+                    enableHighAccuracy: true, // Use high accuracy for better results
+                    maximumAge: 0,           // Do not use cached positions
+                    timeout: 10000           // Timeout after 10 seconds
                 }
-            },
-            error => {
-                console.error("Error watching location:", error.message);
-                alert("Unable to retrieve location. Please ensure location services are enabled.");
-            },
-            {
-                enableHighAccuracy: true, // Use high accuracy for better results
-                maximumAge: 0,           // Do not use cached positions
-                timeout: 10000           // Timeout after 10 seconds
-            }
-        );
+            );
+        }, updateInterval); // Use the update interval set by the host
     } else {
         alert("Geolocation is not supported by your browser.");
     }
@@ -245,8 +288,19 @@ function startLocationUpdates() {
 
 function setIntervalFromHost() {
     // Host sets location update interval
-    const interval = parseInt(document.getElementById('interval').value);
-    if (!isNaN(interval)) socket.emit('setUpdateInterval', interval);
+    const intervalInput = document.getElementById('interval');
+    if (!intervalInput) {
+        console.error("Interval input element not found.");
+        return;
+    }
+
+    const interval = parseInt(intervalInput.value);
+    if (!isNaN(interval)) {
+        const validatedInterval = Math.max(interval, 10000); // Enforce a minimum of 10 seconds
+        socket.emit('setUpdateInterval', validatedInterval);
+    } else {
+        alert("Please enter a valid number for the interval.");
+    }
 }
 
 // --- Geofence Logic ---
@@ -326,8 +380,9 @@ function isInMapBounds(lat, lng) {
 
 // Update interval from host
 socket.on('updateInterval', interval => {
-    updateInterval = interval;
-    startLocationUpdates();
+    updateInterval = Math.max(interval, 10000); // Enforce a minimum of 10 seconds
+    console.log(`Update interval set to ${updateInterval} ms`); // Debug log for interval update
+    startLocationUpdates(); // Restart location updates with the new interval
 });
 
 // Update user list and markers

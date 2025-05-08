@@ -13,6 +13,10 @@
             color: #333;
         }
 
+        body.no-scroll {
+            overflow: hidden; /* Disable scrolling */
+        }
+
         header {
             background-color: #2c3e50;
             color: white;
@@ -176,7 +180,7 @@
             <h1>Lobby Tracker</h1>
             <div class="toolbar" id="intervalControl">
                 <span style="color: black;"> <label for="interval">Update interval (ms):</label>:</span>
-                <input id="interval" type="number" value="5000">
+                <input id="interval" type="number" value="10000"> <!-- Default set to 10000 ms -->
                 <button onclick="setIntervalFromHost()">Set</button>
             </div>
         </header>
@@ -227,16 +231,26 @@
 </body>
 </html>
 <script>
+    // Remove global map initialization here
+    // const map = L.map('map').setView([0, 0], 2);
+    let map = null;
+    let markerGroup = null;
     const socket = io();
-    const map = L.map('map').setView([0, 0], 2);
-    const markerGroup = L.layerGroup().addTo(map);
     const userList = document.getElementById('userList');
     const warning = document.getElementById('warning');
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
+    function initializeMap() {
+        if (map) return; // Prevent re-initialization
+        map = L.map('map').setView([0, 0], 2);
+        markerGroup = L.layerGroup().addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        setTimeout(() => {
+            map.invalidateSize(); // Fixes map sizing on touch devices
+        }, 200);
+    }
 
     function joinLobby() {
         const lobbyId = document.getElementById('lobbyId').value;
@@ -248,8 +262,30 @@
             return;
         }
 
+        // Initialize map only after app content is visible
+        initializeMap();
+
         socket.emit('joinLobby', { lobbyId, userName, isHost });
     }
+
+    // Add this after your other functions in the <script> tag
+    let userMarkers = {};
+
+    socket.on('userList', (users) => {
+        // Remove old markers
+        if (markerGroup) markerGroup.clearLayers();
+        userMarkers = {};
+
+        Object.entries(users).forEach(([id, user]) => {
+            if (user.location && user.location.lat !== 0 && user.location.lng !== 0) {
+                const marker = L.marker([user.location.lat, user.location.lng])
+                    .addTo(markerGroup)
+                    .bindPopup(user.name);
+                userMarkers[id] = marker;
+            }
+        });
+    });
+</script>
 
 
 

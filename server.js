@@ -56,20 +56,11 @@ io.on('connection', (socket) => {
         console.log(`locationUpdate event: socketId=${socket.id}, location=${JSON.stringify(location)}`); // Debug log for location update
         const lobby = lobbies[socket.lobbyId];
         if (lobby && lobby.users[socket.id]) {
-            // Validate location before updating
-            if (location.lat !== 0 || location.lng !== 0) {
-                lobby.users[socket.id].location = location;
-            } else {
-                console.warn(`Invalid location received for user ${socket.userName}:`, location);
-                lobby.users[socket.id].location = null; // Set to null if invalid
-            }
+            // Update the user's location
+            lobby.users[socket.id].location = location;
 
-            // Filter out users with invalid locations before broadcasting
-            const filteredUsers = Object.fromEntries(
-                Object.entries(lobby.users).filter(([_, user]) => user.location && user.location.lat !== 0 && user.location.lng !== 0)
-            );
-
-            io.to(socket.lobbyId).emit('userList', filteredUsers);
+            // Broadcast the updated user list to the lobby
+            io.to(socket.lobbyId).emit('userList', lobby.users);
             console.log(`Updated location for user ${socket.userName} in lobby ${socket.lobbyId}`); // Debug log for location update
         }
     });
@@ -77,11 +68,18 @@ io.on('connection', (socket) => {
     socket.on('setUpdateInterval', (interval) => {
         console.log(`setUpdateInterval event: socketId=${socket.id}, interval=${interval}`); // Debug log for event trigger
         if (socket.isHost) {
-            console.log(`Host ${socket.userName} set update interval to ${interval} ms`); // Debug log for host action
-            for (const id in lobbies[socket.lobbyId].users) {
-                lobbies[socket.lobbyId].users[id].interval = interval;
+            const validatedInterval = Math.max(interval, 10000); // Enforce a minimum of 10 seconds
+            console.log(`Host ${socket.userName} set update interval to ${validatedInterval} ms`); // Debug log for host action
+
+            // Update the interval for all users in the lobby
+            const lobby = lobbies[socket.lobbyId];
+            if (lobby) {
+                for (const id in lobby.users) {
+                    lobby.users[id].interval = validatedInterval;
+                }
             }
-            io.to(socket.lobbyId).emit('updateInterval', interval);
+
+            io.to(socket.lobbyId).emit('updateInterval', validatedInterval); // Broadcast the new interval to all clients
             console.log(`Broadcasted new update interval to lobby ${socket.lobbyId}`); // Debug log for broadcast
         } else {
             console.warn(`Non-host user ${socket.userName} attempted to set update interval.`); // Warning for unauthorized action
