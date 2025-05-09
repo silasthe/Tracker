@@ -147,96 +147,95 @@ function addDeleteBoxControl() {
 function enableDrawingMode() {
     if (!isHost) return console.warn("Only the host can draw the playing area.");
 
+    let drawing = false;
+    let startLatLng = null;
+    let rectangle = null;
+
+    // Mouse events
+    function onMouseDown(e) {
+        drawing = true;
+        startLatLng = e.latlng;
+        if (rectangle) map.removeLayer(rectangle);
+    }
+
+    function onMouseMove(e) {
+        if (!drawing || !startLatLng) return;
+        const bounds = L.latLngBounds(startLatLng, e.latlng);
+        if (rectangle) map.removeLayer(rectangle);
+        rectangle = L.rectangle(bounds, { color: 'blue', weight: 2 }).addTo(map);
+    }
+
+    function onMouseUp(e) {
+        drawing = false;
+        if (rectangle) {
+            const bounds = rectangle.getBounds();
+            // Emit box bounds to server
+            socket.emit('draw-rectangle', {
+                southWest: bounds.getSouthWest(),
+                northEast: bounds.getNorthEast()
+            });
+        }
+        cleanup();
+    }
+
+    // Touch events
+    function onTouchStart(e) {
+        if (e.latlng) {
+            drawing = true;
+            startLatLng = e.latlng;
+            if (rectangle) map.removeLayer(rectangle);
+        }
+    }
+
+    function onTouchMove(e) {
+        if (!drawing || !startLatLng || !e.latlng) return;
+        const bounds = L.latLngBounds(startLatLng, e.latlng);
+        if (rectangle) map.removeLayer(rectangle);
+        rectangle = L.rectangle(bounds, { color: 'blue', weight: 2 }).addTo(map);
+    }
+
+    function onTouchEnd(e) {
+        drawing = false;
+        if (rectangle) {
+            const bounds = rectangle.getBounds();
+            // Emit box bounds to server
+            socket.emit('draw-rectangle', {
+                southWest: bounds.getSouthWest(),
+                northEast: bounds.getNorthEast()
+            });
+        }
+        cleanup();
+    }
+
+    function cleanup() {
+        map.off('mousedown', onMouseDown);
+        map.off('mousemove', onMouseMove);
+        map.off('mouseup', onMouseUp);
+        map.off('touchstart', onTouchStart);
+        map.off('touchmove', onTouchMove);
+        map.off('touchend', onTouchEnd);
+        if (rectangle) {
+            map.removeLayer(rectangle);
+            rectangle = null;
+        }
+        document.body.classList.remove('no-scroll');
+        map.dragging.enable();
+        map.doubleClickZoom.enable();
+        map.scrollWheelZoom.enable();
+    }
+
+    // Disable map interactions while drawing
     map.dragging.disable();
     map.doubleClickZoom.disable();
     map.scrollWheelZoom.disable();
     document.body.classList.add('no-scroll');
 
-    let startLatLng = null;
-
-    // Utility to get latlng from mouse or touch event
-    function getLatLngFromEvent(e) {
-        if (e.latlng) return e.latlng;
-        if (e.touches && e.touches.length > 0) {
-            // Touch start/move
-            const touch = e.touches[0];
-            const containerPoint = map.mouseEventToContainerPoint
-                ? map.mouseEventToContainerPoint(touch)
-                : map.layerPointToContainerPoint(touch);
-            return map.containerPointToLatLng(containerPoint);
-        }
-        if (e.changedTouches && e.changedTouches.length > 0) {
-            // Touch end
-            const touch = e.changedTouches[0];
-            const containerPoint = map.mouseEventToContainerPoint
-                ? map.mouseEventToContainerPoint(touch)
-                : map.layerPointToContainerPoint(touch);
-            return map.containerPointToLatLng(containerPoint);
-        }
-        return null;
-    }
-
-    function startDrawing(e) {
-        const eventLatLng = getLatLngFromEvent(e);
-        if (!eventLatLng) return;
-        startLatLng = eventLatLng;
-        tempBox = L.rectangle([startLatLng, startLatLng], { color: 'blue', weight: 2 }).addTo(map);
-
-        map.on('mousemove', onMove);
-        map.on('touchmove', onMove);
-        map.once('mouseup', endDrawing);
-        map.once('touchend', endDrawing);
-    }
-
-    function onMove(e) {
-        const currentLatLng = getLatLngFromEvent(e);
-        if (tempBox && currentLatLng) {
-            tempBox.setBounds([startLatLng, currentLatLng]);
-        }
-    }
-
-    function endDrawing(e) {
-        const endLatLng = getLatLngFromEvent(e);
-        map.off('mousemove', onMove);
-        map.off('touchmove', onMove);
-        map.off('mouseup', endDrawing);
-        map.off('touchend', endDrawing);
-
-        if (tempBox) {
-            map.removeLayer(tempBox);
-            tempBox = null;
-        }
-
-        if (drawnBox) {
-            map.removeLayer(drawnBox);
-        }
-
-        if (!startLatLng || !endLatLng) {
-            // Re-enable map interactions and allow page scrolling
-            map.dragging.enable();
-            map.doubleClickZoom.enable();
-            map.scrollWheelZoom.enable();
-            document.body.classList.remove('no-scroll');
-            return;
-        }
-
-        const bounds = L.latLngBounds(startLatLng, endLatLng);
-        drawnBox = L.rectangle(bounds, { color: 'red', weight: 2 }).addTo(map);
-
-        // Emit box bounds to server
-        socket.emit('draw-rectangle', {
-            southWest: bounds.getSouthWest(),
-            northEast: bounds.getNorthEast()
-        });
-
-        map.dragging.enable();
-        map.doubleClickZoom.enable();
-        map.scrollWheelZoom.enable();
-        document.body.classList.remove('no-scroll');
-    }
-
-    map.once('mousedown', startDrawing);
-    map.once('touchstart', startDrawing);
+    map.on('mousedown', onMouseDown);
+    map.on('mousemove', onMouseMove);
+    map.on('mouseup', onMouseUp);
+    map.on('touchstart', onTouchStart);
+    map.on('touchmove', onTouchMove);
+    map.on('touchend', onTouchEnd);
 }
 
 // --- Box Management ---
@@ -597,3 +596,15 @@ warningBanner.style.padding = '10px';
 warningBanner.style.zIndex = '1000';
 warningBanner.style.display = 'none';
 document.body.appendChild(warningBanner);
+
+document.addEventListener('touchstart', function (e) {
+  if (e.target.closest('#map')) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
+document.addEventListener('touchmove', function (e) {
+  if (e.target.closest('#map')) {
+    e.preventDefault();
+  }
+}, { passive: false });
