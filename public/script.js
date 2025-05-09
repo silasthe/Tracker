@@ -1,5 +1,6 @@
 const socket = io();
-let map, drawnBox = null, tempBox = null;
+let map; // Declare only once at the top of your script
+let drawnBox = null, tempBox = null;
 let lobbyId, userName, isHost, updateInterval = 10000; // Default update interval set to 10 seconds (10000 ms)
 let markers = {};
 let locationUpdateIntervalId = null;
@@ -11,7 +12,24 @@ const userListElement = document.getElementById('userList');
 const boxListElement = document.getElementById('boxList');
 const clearBoxButton = document.getElementById('clearBoxButton');
 
-// --- Lobby Join ---
+// Add this function near the top of your script.js, before any usage of requestLocationPermission
+function requestLocationPermission(callback) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                callback(position.coords.latitude, position.coords.longitude);
+            },
+            error => {
+                alert("Location permission denied or unavailable.");
+                callback(null, null);
+            }
+        );
+    } else {
+        alert("Geolocation is not supported by this browser.");
+        callback(null, null);
+    }
+}
+
 function joinLobby() {
     lobbyId = document.getElementById('lobbyId').value;
     userName = document.getElementById('userName').value;
@@ -22,8 +40,7 @@ function joinLobby() {
     socket.emit('joinLobby', { lobbyId, userName, isHost });
     if (isHost && intervalControl) intervalControl.style.display = 'block';
     initMap();
-    // Start location updates only after a user gesture
-    document.getElementById('map').addEventListener('click', startLocationUpdates, { once: true });
+    startLocationUpdates(); // <-- Start sending location right away
 }
 
 // --- Map Initialization ---
@@ -253,6 +270,27 @@ function startLocationUpdates() {
     }
 
     if (navigator.geolocation) {
+        // Send location immediately on start
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                const coords = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                socket.emit('locationUpdate', coords);
+            },
+            error => {
+                console.error("Error retrieving location:", error.message);
+                alert("Unable to retrieve location. Please ensure location services are enabled.");
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            }
+        );
+
+        // Continue sending location at intervals
         locationUpdateIntervalId = setInterval(() => {
             navigator.geolocation.getCurrentPosition(
                 position => {
