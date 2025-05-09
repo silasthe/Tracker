@@ -523,6 +523,11 @@ socket.on('draw-rectangle', (data) => {
     addBoxToMap(data);
 });
 
+// Show warning message from server
+socket.on('showWarning', (message) => {
+    showWarning(message); // Assumes you have a showWarning function that displays the warning in the UI
+});
+
 // --- UI Event Listeners ---
 if (clearBoxButton) clearBoxButton.addEventListener('click', clearBox);
 

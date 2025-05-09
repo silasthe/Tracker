@@ -175,7 +175,16 @@ app.post("/location", (req, res) => {
     }
 
     if (newState === "outside") {
-        console.warn(`Warning: User ${userId} is outside the boundaries!`); // Log warning each time user is outside
+        console.warn(`Warning: User ${userId} is outside the boundaries!`);
+        // Emit warning to the specific user if they are connected via socket
+        const userSocket = Object.keys(lobbies).flatMap(lobbyId =>
+            Object.entries(lobbies[lobbyId].users)
+                .filter(([id, user]) => user.name === userId)
+                .map(([id]) => id)
+        )[0];
+        if (userSocket && io.sockets.sockets.get(userSocket)) {
+            io.sockets.sockets.get(userSocket).emit('showWarning', "⚠️ OUTSIDE");
+        }
     }
 
     userStates[userId] = newState; // Update the user's state
