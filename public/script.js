@@ -524,8 +524,12 @@ socket.on('draw-rectangle', (data) => {
 });
 
 // Show warning message from server
-socket.on('showWarning', (message) => {
-    showWarning(message); // Assumes you have a showWarning function that displays the warning in the UI
+socket.on('showWarning', () => {
+  warningBanner.style.display = 'block';
+});
+
+socket.on('hideWarning', () => {
+  warningBanner.style.display = 'none';
 });
 
 // --- UI Event Listeners ---
@@ -576,3 +580,20 @@ document.getElementById('joinBtn').addEventListener('click', () => {
 
 // Call this function when the page loads or when the user joins the lobby
 document.addEventListener('DOMContentLoaded', requestLocationPermission);
+
+// Warning banner for outside play area
+const warningBanner = document.createElement('div');
+warningBanner.id = 'warningBanner';
+warningBanner.textContent = "⚠️ Someone is outside the play area!";
+warningBanner.style.position = 'fixed';
+warningBanner.style.top = '0';
+warningBanner.style.left = '0';
+warningBanner.style.width = '100%';
+warningBanner.style.backgroundColor = 'red';
+warningBanner.style.color = 'white';
+warningBanner.style.fontSize = '1.5em';
+warningBanner.style.textAlign = 'center';
+warningBanner.style.padding = '10px';
+warningBanner.style.zIndex = '1000';
+warningBanner.style.display = 'none';
+document.body.appendChild(warningBanner);
