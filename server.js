@@ -15,8 +15,8 @@ const userStates = {}; // In-memory store to track user states (inside or outsid
 io.on('connection', (socket) => {
     console.log(`New connection: ${socket.id}`); // Debug log for new connection
 
-    socket.on('joinLobby', ({ lobbyId, userName, isHost }) => {
-        console.log(`joinLobby event: socketId=${socket.id}, lobbyId=${lobbyId}, userName=${userName}, isHost=${isHost}`); // Debug log for joinLobby
+    socket.on('joinLobby', ({ lobbyId, userName, isHost, latitude, longitude }) => {
+        console.log(`joinLobby event: socketId=${socket.id}, lobbyId=${lobbyId}, userName=${userName}, isHost=${isHost}, latitude=${latitude}, longitude=${longitude}`); // Debug log for joinLobby
 
         socket.join(lobbyId);
         socket.lobbyId = lobbyId;
@@ -29,10 +29,12 @@ io.on('connection', (socket) => {
             console.log(`Created new lobby: ${lobbyId}`); // Debug log for new lobby creation
         }
 
-        // Register the user in the lobby after lobbyId is defined
+        // Register the user in the lobby after lobbyId is defined, with location if provided
         lobbies[lobbyId].users[socket.id] = { 
             name: userName, 
-            location: null, // Set location to null initially
+            location: (typeof latitude === "number" && typeof longitude === "number")
+                ? { latitude, longitude }
+                : null,
             interval: 10000, 
             isHost 
         };
@@ -51,6 +53,16 @@ io.on('connection', (socket) => {
             Object.entries(lobbies[lobbyId].users).filter(([_, user]) => user.location && user.location.lat !== 0 && user.location.lng !== 0)
         ));
         console.log(`Updated user list for lobby ${lobbyId}:`, lobbies[lobbyId].users); // Debug log for user list
+
+        // Find the host's interval for this lobby
+        const host = Object.values(lobbies[lobbyId].users).find(u => u.isHost);
+        if (host && host.interval) {
+            // Send the current interval to the new user
+            socket.emit('updateInterval', host.interval);
+
+            // Update the new user's interval property to match the host's
+            lobbies[lobbyId].users[socket.id].interval = host.interval;
+        }
 
         socket.on('updateLocation', ({ latitude, longitude }) => {
             const lobbyId = socket.lobbyId;
