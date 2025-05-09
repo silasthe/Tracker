@@ -14,21 +14,19 @@ const clearBoxButton = document.getElementById('clearBoxButton');
 
 // Add this function near the top of your script.js, before any usage of requestLocationPermission
 function requestLocationPermission(callback) {
-    if (typeof callback !== 'function') {
-        console.warn('Callback is not a function');
-        return;
-    }
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-            (position) => callback(position),
-            (error) => {
-                console.error('Geolocation error:', error);
-                callback(null);
+            position => {
+                callback(position.coords.latitude, position.coords.longitude);
+            },
+            error => {
+                alert("Location permission denied or unavailable.");
+                callback(null, null);
             }
         );
     } else {
-        console.warn('Geolocation not supported');
-        callback(null);
+        alert("Geolocation is not supported by this browser.");
+        callback(null, null);
     }
 }
 
@@ -47,12 +45,6 @@ function joinLobby() {
 
 // --- Map Initialization ---
 function initMap() {
-    const mapDiv = document.getElementById('map');
-    if (!mapDiv || mapDiv.offsetWidth === 0 || mapDiv.offsetHeight === 0) {
-        console.error('Map container is not properly styled or visible.');
-        return;
-    }
-
     if (map) return; // Prevent re-initialization
 
     const mapContainer = document.getElementById('map');
@@ -344,10 +336,9 @@ function startLocationUpdates() {
 function setIntervalFromHost() {
     // Host sets location update interval
     const intervalInput = document.getElementById('interval');
-    if (intervalInput) {
-        intervalInput.value = 10000;
-    } else {
-        console.warn('Interval input not found.');
+    if (!intervalInput) {
+        console.error("Interval input element not found.");
+        return;
     }
 
     const interval = parseInt(intervalInput.value);
@@ -644,10 +635,3 @@ map.on('touchmove', function (e) {
 map.on('touchend', function (e) {
   finishBox();
 });
-
-// Example fix for .on usage (around line 632)
-if (someObject && typeof someObject.on === 'function') {
-    someObject.on('event', handler);
-} else {
-    console.warn('Cannot attach event handler: .on is not a function or object is undefined');
-}
