@@ -169,25 +169,38 @@ app.post("/location", (req, res) => {
     const newState = isInside ? "inside" : "outside";
     const prevState = userStates[userId];
 
-    if (prevState !== newState) {
-        console.log(`${userId} ${prevState || "unknown"} → ${newState}`);
-        // Add custom logic here for entry/exit events
+    userStates[userId] = newState; // Update the user's state
+
+    // Find the lobby and socketId for this user
+    let lobbyId = null, socketId = null;
+    for (const lId in lobbies) {
+        for (const sId in lobbies[lId].users) {
+            if (lobbies[lId].users[sId].name === userId) {
+                lobbyId = lId;
+                socketId = sId;
+                break;
+            }
+        }
+        if (lobbyId) break;
     }
 
-    if (newState === "outside") {
-        console.warn(`Warning: User ${userId} is outside the boundaries!`);
-        // Emit warning to the specific user if they are connected via socket
-        const userSocket = Object.keys(lobbies).flatMap(lobbyId =>
-            Object.entries(lobbies[lobbyId].users)
-                .filter(([id, user]) => user.name === userId)
-                .map(([id]) => id)
-        )[0];
-        if (userSocket && io.sockets.sockets.get(userSocket)) {
-            io.sockets.sockets.get(userSocket).emit('showWarning', "⚠️ OUTSIDE");
+    // Check if any user in the lobby is outside
+    let anyoneOutside = false;
+    if (lobbyId) {
+        for (const sId in lobbies[lobbyId].users) {
+            const name = lobbies[lobbyId].users[sId].name;
+            if (userStates[name] === "outside") {
+                anyoneOutside = true;
+                break;
+            }
         }
     }
 
-    userStates[userId] = newState; // Update the user's state
+    if (anyoneOutside && lobbyId) {
+        io.to(lobbyId).emit('showWarning', "⚠️ Someone is outside the play area!");
+    } else if (lobbyId) {
+        io.to(lobbyId).emit('hideWarning');
+    }
 
     res.send({ status: newState });
 });
