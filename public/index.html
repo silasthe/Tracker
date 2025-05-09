@@ -69,7 +69,7 @@
             margin: 20px auto;
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            touch-action: none; /* Prevent default touch actions */
+            touch-action: pan-x pan-y; /* Allow panning and zooming gestures */
             user-select: none;
         }
 
@@ -239,62 +239,6 @@
     <script src="script.js"></script>
 </body>
 </html>
-<script>
-    // Remove global map initialization here
-    // const map = L.map('map').setView([0, 0], 2);
-    let map = null;
-    let markerGroup = null;
-    const socket = io();
-    const userList = document.getElementById('userList');
-    const warning = document.getElementById('warning');
-
-    function initializeMap() {
-        if (map) return; // Prevent re-initialization
-        map = L.map('map').setView([0, 0], 2);
-        markerGroup = L.layerGroup().addTo(map);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
-        setTimeout(() => {
-            map.invalidateSize(); // Fixes map sizing on touch devices
-        }, 200);
-    }
-
-    function joinLobby() {
-        const lobbyId = document.getElementById('lobbyId').value;
-        const userName = document.getElementById('userName').value;
-        const isHost = document.getElementById('isHost').checked;
-
-        if (!lobbyId || !userName) {
-            alert("Please enter both Lobby ID and Your Name.");
-            return;
-        }
-
-        // Initialize map only after app content is visible
-        initializeMap();
-
-        socket.emit('joinLobby', { lobbyId, userName, isHost });
-    }
-
-    // Add this after your other functions in the <script> tag
-    let userMarkers = {};
-
-    socket.on('userList', (users) => {
-        // Remove old markers
-        if (markerGroup) markerGroup.clearLayers();
-        userMarkers = {};
-
-        Object.entries(users).forEach(([id, user]) => {
-            if (user.location && user.location.lat !== 0 && user.location.lng !== 0) {
-                const marker = L.marker([user.location.lat, user.location.lng])
-                    .addTo(markerGroup)
-                    .bindPopup(user.name);
-                userMarkers[id] = marker;
-            }
-        });
-    });
-</script>
 
 
 
