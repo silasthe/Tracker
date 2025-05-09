@@ -489,49 +489,47 @@ socket.on('draw-rectangle', (data) => {
 if (clearBoxButton) clearBoxButton.addEventListener('click', clearBox);
 
 document.getElementById('joinBtn').addEventListener('click', () => {
-    const lobbyIdInput = document.getElementById('lobbyId').value;
-    const nameInput = document.getElementById('nameInput').value;
+    const lobbyId = document.getElementById('lobbyIdInput').value;
+    const playerName = document.getElementById('nameInput').value;
     const isHost = document.getElementById('hostCheckbox').checked;
-
-    if (!lobbyIdInput || !nameInput) {
-        alert("Please fill in all fields.");
-        return;
+  
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
     }
-
-    // Set values for the main app
-    document.getElementById('lobbyId').value = lobbyIdInput;
-    document.getElementById('userName').value = nameInput;
-    document.getElementById('isHost').checked = isHost;
-
-    // Hide login screen and show app content
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app-content').style.display = 'block';
-
-    // Join the lobby
-    joinLobby();
-});
-
-// --- Notes ---
-// - Only one rectangle (box) is shown at a time on the map.
-// - Only the host can draw a box.
-// - All drawing is handled via Leaflet, not canvas.
-// - Code is simplified for clarity and maintainability.
-
-function requestLocationPermission() {
+  
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+  
+        // Gem og send lokation sammen med resten
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app-content').style.display = 'block';
+  
+        // Tilpas denne funktion så den tager imod coords
+        joinLobby(lobbyId, playerName, isHost, coords);
+      },
+      error => {
+        alert('Could not get your location. Please allow location access.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+  
+  function sendLocation() {
     if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                console.log("Location permission granted:", position);
-            },
-            (error) => {
-                console.error("Error requesting location permission:", error.message);
-                alert("Please enable location permissions for this app to work correctly.");
-            }
-        );
-    } else {
-        alert("Geolocation is not supported by your browser.");
+      navigator.geolocation.getCurrentPosition(position => {
+        socket.emit('updateLocation', {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      });
     }
-}
+  }
+  
 
 // Call this function when the page loads or when the user joins the lobby
 document.addEventListener('DOMContentLoaded', requestLocationPermission);

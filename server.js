@@ -22,25 +22,26 @@ io.on('connection', (socket) => {
         socket.lobbyId = lobbyId;
         socket.userName = userName;
         socket.isHost = isHost;
-        socket.updateInterval = 5000;
+        socket.updateInterval = 10000;
 
         if (!lobbies[lobbyId]) {
             lobbies[lobbyId] = { users: {}, boxes: [] };
             console.log(`Created new lobby: ${lobbyId}`); // Debug log for new lobby creation
         }
 
+        // Register the user in the lobby after lobbyId is defined
+        lobbies[lobbyId].users[socket.id] = { 
+            name: userName, 
+            location: null, // Set location to null initially
+            interval: 10000, 
+            isHost 
+        };
+
         if (isHost) {
             console.log(`Host ${userName} reconnected. Clearing box list for lobby ${lobbyId}.`); // Debug log for host reconnection
             lobbies[lobbyId].boxes = [];
             io.to(lobbyId).emit('boxList', []);
         }
-
-        lobbies[lobbyId].users[socket.id] = { 
-            name: userName, 
-            location: null, // Set location to null initially
-            interval: 5000, 
-            isHost 
-        };
 
         const boxes = lobbies[lobbyId].boxes.slice(-5);
         socket.emit('boxList', boxes);
@@ -50,6 +51,15 @@ io.on('connection', (socket) => {
             Object.entries(lobbies[lobbyId].users).filter(([_, user]) => user.location && user.location.lat !== 0 && user.location.lng !== 0)
         ));
         console.log(`Updated user list for lobby ${lobbyId}:`, lobbies[lobbyId].users); // Debug log for user list
+
+        socket.on('updateLocation', ({ latitude, longitude }) => {
+            const lobbyId = socket.lobbyId;
+            if (lobbyId && lobbies[lobbyId] && lobbies[lobbyId].users[socket.id]) {
+                lobbies[lobbyId].users[socket.id].location = { latitude, longitude };
+                console.log(`Updated location for ${socket.userName}:`, latitude, longitude);
+            }
+        });
+        
     });
 
     socket.on('locationUpdate', (location) => {
@@ -64,7 +74,7 @@ io.on('connection', (socket) => {
             console.log(`Updated location for user ${socket.userName} in lobby ${socket.lobbyId}`); // Debug log for location update
         }
     });
-
+    
     socket.on('setUpdateInterval', (interval) => {
         console.log(`setUpdateInterval event: socketId=${socket.id}, interval=${interval}`); // Debug log for event trigger
         if (socket.isHost) {
