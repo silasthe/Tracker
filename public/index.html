@@ -6,6 +6,10 @@
     <title>Lobby Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
+        html, body {
+            overscroll-behavior: none;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, sans-serif;
             margin: 0;
@@ -66,6 +70,7 @@
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             touch-action: none; /* Prevent default touch actions */
+            user-select: none;
         }
 
         #intervalControl {

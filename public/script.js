@@ -53,7 +53,12 @@ function initMap() {
         return;
     }
 
-    map = L.map('map').setView([0, 0], 2);
+    map = L.map('map', {
+      gestureHandling: false,
+      zoomControl: true,
+      dragging: true,
+      tap: false // IMPORTANT for fixing touch issues on mobile
+    }).setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -109,6 +114,11 @@ function addDrawingControl() {
                 L.DomEvent.preventDefault(e);
                 enableDrawingMode();
             });
+            L.DomEvent.on(button, 'touchstart', (e) => {
+                L.DomEvent.stopPropagation(e);
+                L.DomEvent.preventDefault(e);
+                enableDrawingMode();
+            }, { passive: false });
 
             return container;
         }
@@ -597,7 +607,8 @@ warningBanner.style.zIndex = '1000';
 warningBanner.style.display = 'none';
 document.body.appendChild(warningBanner);
 
-document.addEventListener('touchstart', function (e) {
+document.body.style.overscrollBehavior = 'none';
+document.addEventListener('touchstart', (e) => {
   if (e.target.closest('#map')) {
     e.preventDefault();
   }
@@ -608,3 +619,19 @@ document.addEventListener('touchmove', function (e) {
     e.preventDefault();
   }
 }, { passive: false });
+
+map.on('touchstart', function (e) {
+  const touch = e.originalEvent.touches[0];
+  const latlng = map.containerPointToLatLng(L.point(touch.clientX, touch.clientY));
+  startBox({ latlng });
+});
+
+map.on('touchmove', function (e) {
+  const touch = e.originalEvent.touches[0];
+  const latlng = map.containerPointToLatLng(L.point(touch.clientX, touch.clientY));
+  updateBox({ latlng });
+});
+
+map.on('touchend', function (e) {
+  finishBox();
+});
